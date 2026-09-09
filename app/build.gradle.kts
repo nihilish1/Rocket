@@ -7,6 +7,20 @@ android {
     namespace = "com.example.rocketwallpaper"
     compileSdk = 34
 
+    signingConfigs {
+        getByName("debug") {
+            // Fixed debug key checked into the repo so every build (local or
+            // via GitHub Actions) signs with the SAME key. Without this,
+            // each CI run generates a random key and re-installing a newer
+            // APK over an older one silently fails with a signature
+            // mismatch.
+            storeFile = rootProject.file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.example.rocketwallpaper"
         minSdk = 24
