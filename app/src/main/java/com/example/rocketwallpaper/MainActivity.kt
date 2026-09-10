@@ -41,8 +41,16 @@ class MainActivity : Activity() {
             setOnClickListener { applyWallpaper() }
         }
 
+        val settingsButton = Button(this).apply {
+            text = "Settings"
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+            }
+        }
+
         layout.addView(label)
         layout.addView(button)
+        layout.addView(settingsButton)
         setContentView(layout)
     }
 
