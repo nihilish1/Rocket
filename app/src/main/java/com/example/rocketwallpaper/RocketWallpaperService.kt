@@ -16,6 +16,8 @@ import kotlin.random.Random
  * Settings screen (see RocketSettings / SettingsActivity) and are read live
  * here, so changes take effect immediately without reinstalling anything.
  */
+private enum class FlightMode { GRID, EXIT, ENTER }
+
 class RocketWallpaperService : WallpaperService() {
     override fun onCreateEngine(): Engine = RocketEngine()
 
@@ -58,8 +60,7 @@ class RocketWallpaperService : WallpaperService() {
         private var dirX = 0f
         private var dirY = 0f
 
-        private enum class Mode { GRID, EXIT, ENTER }
-        private var mode = Mode.GRID
+        private var mode = FlightMode.GRID
         private var legsSinceExit = 0
         private var legsUntilExit = Random.nextInt(3, 7)
 
@@ -107,7 +108,7 @@ class RocketWallpaperService : WallpaperService() {
             curRow = start.second
             posX = cellCenterX(curCol)
             posY = cellCenterY(curRow)
-            mode = Mode.GRID
+            mode = FlightMode.GRID
             legsSinceExit = 0
             legsUntilExit = Random.nextInt(3, 7)
             pickNextLeg()
@@ -240,7 +241,7 @@ class RocketWallpaperService : WallpaperService() {
 
         /** Sends the rocket straight past the grid edge until it's fully off-screen. */
         private fun startExit() {
-            mode = Mode.EXIT
+            mode = FlightMode.EXIT
             val farDistance = (screenW + screenH).toFloat()
             targetX = posX + dirX * farDistance
             targetY = posY + dirY * farDistance
@@ -248,7 +249,7 @@ class RocketWallpaperService : WallpaperService() {
 
         /** Picks a random edge off-screen and flies back in to a free entry cell. */
         private fun startEnter() {
-            mode = Mode.ENTER
+            mode = FlightMode.ENTER
             val margin = maxOf(screenW, screenH) * 0.25f
             var attempts = 0
             var entryCol: Int
@@ -325,7 +326,7 @@ class RocketWallpaperService : WallpaperService() {
                 posX = targetX
                 posY = targetY
                 when (mode) {
-                    Mode.GRID -> {
+                    FlightMode.GRID -> {
                         legsSinceExit++
                         if (legsSinceExit >= legsUntilExit) {
                             startExit()
@@ -333,11 +334,11 @@ class RocketWallpaperService : WallpaperService() {
                             pickNextLeg()
                         }
                     }
-                    Mode.EXIT -> {
+                    FlightMode.EXIT -> {
                         startEnter()
                     }
-                    Mode.ENTER -> {
-                        mode = Mode.GRID
+                    FlightMode.ENTER -> {
+                        mode = FlightMode.GRID
                         legsSinceExit = 0
                         legsUntilExit = Random.nextInt(3, 7)
                         pickNextLeg()
