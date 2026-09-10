@@ -130,50 +130,34 @@ class RocketWallpaperService : WallpaperService() {
             cellH = (gridBottom - gridTop) / rows.toFloat()
         }
 
-        private fun cellCenterX(col: Int) = gridLeft + cellW * (col + 0.5f)
-        private fun cellCenterY(row: Int) = gridTop + cellH * (row + 0.5f)
-
-        private fun isFree(col: Int, row: Int): Boolean {
-            if (col < 0 || col >= columns) return false
-            if (row < 0 || row >= rows) return false
-            return (col to row) !in blockedCells
-        }
-
-        /** Picks a row with no blocked cells if one exists, else the row with the fewest. */
-        private fun pickRow(): Int {
-            if (rows <= 0) return 0
-            var bestRow = 0
-            var bestBlocked = Int.MAX_VALUE
-            val fullyFreeRows = mutableListOf<Int>()
-            for (r in 0 until rows) {
-                var blockedCount = 0
-                for (c in 0 until columns) if (!isFree(c, r)) blockedCount++
-                if (blockedCount == 0) fullyFreeRows.add(r)
-                if (blockedCount < bestBlocked) {
-                    bestBlocked = blockedCount
-                    bestRow = r
+        /** Y position of the gap line at index g (0..rows): the empty band between
+         *  row g-1 and row g, or the top/bottom margin bands at the very ends. */
+        private fun gapRowY(g: Int): Float {
+            return when (g) {
+                0 -> gridTop / 2f
+                rows -> {
+                    val gridBottom = screenH * (1f - bottomMarginFraction)
+                    (gridBottom + screenH) / 2f
                 }
+                else -> gridTop + cellH * g
             }
-            return if (fullyFreeRows.isNotEmpty()) fullyFreeRows[Random.nextInt(fullyFreeRows.size)] else bestRow
         }
 
-        /** Picks a column with no blocked cells if one exists, else the column with the fewest. */
-        private fun pickColumn(): Int {
-            if (columns <= 0) return 0
-            var bestCol = 0
-            var bestBlocked = Int.MAX_VALUE
-            val fullyFreeCols = mutableListOf<Int>()
-            for (c in 0 until columns) {
-                var blockedCount = 0
-                for (r in 0 until rows) if (!isFree(c, r)) blockedCount++
-                if (blockedCount == 0) fullyFreeCols.add(c)
-                if (blockedCount < bestBlocked) {
-                    bestBlocked = blockedCount
-                    bestCol = c
+        /** X position of the gap line at index g (0..columns): the empty band
+         *  between column g-1 and column g, or the side margin bands at the ends. */
+        private fun gapColX(g: Int): Float {
+            return when (g) {
+                0 -> gridLeft / 2f
+                columns -> {
+                    val gridRight = screenW * (1f - sideMarginFraction)
+                    (gridRight + screenW) / 2f
                 }
+                else -> gridLeft + cellW * g
             }
-            return if (fullyFreeCols.isNotEmpty()) fullyFreeCols[Random.nextInt(fullyFreeCols.size)] else bestCol
         }
+
+        private fun pickHorizontalGapY(): Float = gapRowY(Random.nextInt(rows + 1))
+        private fun pickVerticalGapX(): Float = gapColX(Random.nextInt(columns + 1))
 
         /** Starts a fresh straight pass: fully off-screen on one edge to fully off-screen on the opposite edge. */
         private fun startNewPass() {
@@ -181,8 +165,7 @@ class RocketWallpaperService : WallpaperService() {
             horizontalNext = !horizontalNext
 
             if (doHorizontal) {
-                val row = pickRow()
-                val y = cellCenterY(row)
+                val y = pickHorizontalGapY()
                 val margin = screenW * 0.15f
                 val goingRight = Random.nextBoolean()
                 if (goingRight) {
@@ -196,8 +179,7 @@ class RocketWallpaperService : WallpaperService() {
                 targetY = y
                 headingDeg = if (goingRight) 0f else 180f
             } else {
-                val col = pickColumn()
-                val x = cellCenterX(col)
+                val x = pickVerticalGapX()
                 val margin = screenH * 0.15f
                 val goingDown = Random.nextBoolean()
                 if (goingDown) {
