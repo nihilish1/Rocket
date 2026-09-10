@@ -12,14 +12,16 @@ object RocketSettings {
     private const val KEY_ROWS = "rows"
     private const val KEY_TOP_MARGIN = "top_margin_pct"
     private const val KEY_BOTTOM_MARGIN = "bottom_margin_pct"
+    private const val KEY_SIDE_MARGIN = "side_margin_pct"
     private const val KEY_SPEED = "speed"
     private const val KEY_SCALE = "scale_pct"
     private const val KEY_BLOCKED = "blocked_cells"
 
     const val DEFAULT_COLUMNS = 5
     const val DEFAULT_ROWS = 6
-    const val DEFAULT_TOP_MARGIN_PCT = 8
-    const val DEFAULT_BOTTOM_MARGIN_PCT = 10
+    const val DEFAULT_TOP_MARGIN_PCT = 16
+    const val DEFAULT_BOTTOM_MARGIN_PCT = 13
+    const val DEFAULT_SIDE_MARGIN_PCT = 4
     const val DEFAULT_SPEED = 260
     const val DEFAULT_SCALE_PCT = 100
 
@@ -36,6 +38,9 @@ object RocketSettings {
 
     fun getBottomMarginPct(context: Context) = prefs(context).getInt(KEY_BOTTOM_MARGIN, DEFAULT_BOTTOM_MARGIN_PCT)
     fun setBottomMarginPct(context: Context, value: Int) { prefs(context).edit().putInt(KEY_BOTTOM_MARGIN, value).apply() }
+
+    fun getSideMarginPct(context: Context) = prefs(context).getInt(KEY_SIDE_MARGIN, DEFAULT_SIDE_MARGIN_PCT)
+    fun setSideMarginPct(context: Context, value: Int) { prefs(context).edit().putInt(KEY_SIDE_MARGIN, value).apply() }
 
     fun getSpeed(context: Context) = prefs(context).getInt(KEY_SPEED, DEFAULT_SPEED)
     fun setSpeed(context: Context, value: Int) { prefs(context).edit().putInt(KEY_SPEED, value).apply() }

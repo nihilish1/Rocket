@@ -143,6 +143,17 @@ class SettingsActivity : Activity() {
         })
         root.addView(bottomBar)
 
+        // --- Side margin ---
+        root.addView(sectionTitle("Side margin (left/right edge)"))
+        val sideBar = SeekBar(this).apply {
+            max = 15
+            progress = RocketSettings.getSideMarginPct(this@SettingsActivity)
+        }
+        sideBar.setOnSeekBarChangeListener(simpleSeekListener { progress ->
+            RocketSettings.setSideMarginPct(this@SettingsActivity, progress)
+        })
+        root.addView(sideBar)
+
         // --- Grid editor ---
         root.addView(sectionTitle("Tap cells to mark them blocked (widgets, anything off-grid). Green = free, red = blocked."))
         gridEditor = GridEditorView(this).apply {

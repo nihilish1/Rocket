@@ -46,6 +46,7 @@ class RocketWallpaperService : WallpaperService() {
         private var rows = RocketSettings.DEFAULT_ROWS
         private var topMarginFraction = RocketSettings.DEFAULT_TOP_MARGIN_PCT / 100f
         private var bottomMarginFraction = RocketSettings.DEFAULT_BOTTOM_MARGIN_PCT / 100f
+        private var sideMarginFraction = RocketSettings.DEFAULT_SIDE_MARGIN_PCT / 100f
         private var speedPxPerSec = RocketSettings.DEFAULT_SPEED.toFloat()
         private var scaleFactor = RocketSettings.DEFAULT_SCALE_PCT / 100f
         private var blockedCells: Set<Pair<Int, Int>> = emptySet()
@@ -126,6 +127,7 @@ class RocketWallpaperService : WallpaperService() {
             rows = RocketSettings.getRows(ctx)
             topMarginFraction = RocketSettings.getTopMarginPct(ctx) / 100f
             bottomMarginFraction = RocketSettings.getBottomMarginPct(ctx) / 100f
+            sideMarginFraction = RocketSettings.getSideMarginPct(ctx) / 100f
             speedPxPerSec = RocketSettings.getSpeed(ctx).toFloat()
             scaleFactor = RocketSettings.getScalePct(ctx) / 100f
             blockedCells = RocketSettings.getBlockedCells(ctx)
@@ -146,8 +148,9 @@ class RocketWallpaperService : WallpaperService() {
         private fun recomputeGrid() {
             gridTop = screenH * topMarginFraction
             val gridBottom = screenH * (1f - bottomMarginFraction)
-            gridLeft = 0f
-            cellW = screenW / columns.toFloat()
+            gridLeft = screenW * sideMarginFraction
+            val gridRight = screenW * (1f - sideMarginFraction)
+            cellW = (gridRight - gridLeft) / columns.toFloat()
             cellH = (gridBottom - gridTop) / rows.toFloat()
         }
 
@@ -242,7 +245,9 @@ class RocketWallpaperService : WallpaperService() {
         /** Sends the rocket straight past the grid edge until it's fully off-screen. */
         private fun startExit() {
             mode = FlightMode.EXIT
-            val farDistance = (screenW + screenH).toFloat()
+            // Travel is always axis-aligned, so only the relevant screen
+            // dimension matters -- using both wastes time on invisible travel.
+            val farDistance = if (dirX != 0f) screenW * 1.3f else screenH * 1.3f
             targetX = posX + dirX * farDistance
             targetY = posY + dirY * farDistance
         }
@@ -353,7 +358,7 @@ class RocketWallpaperService : WallpaperService() {
         private fun render(canvas: Canvas) {
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
 
-            val scale = (cellH.coerceAtMost(cellW) * 1.6f * scaleFactor) / rocketBitmap.height.toFloat()
+            val scale = (cellH.coerceAtMost(cellW) * 0.85f * scaleFactor) / rocketBitmap.height.toFloat()
             val matrix = Matrix()
             matrix.postTranslate(-rocketBitmap.width / 2f, -rocketBitmap.height / 2f)
             matrix.postScale(scale, scale)
