@@ -15,9 +15,13 @@ import kotlin.random.Random
  * All grid, speed, and size settings are configurable from the app's
  * Settings screen (see RocketSettings / SettingsActivity) and are read live
  * here, so changes take effect immediately without reinstalling anything.
+ *
+ * Flight behavior: the rocket only ever makes a single straight pass at a
+ * time -- either purely horizontal or purely vertical -- starting fully
+ * off-screen on one edge and ending fully off-screen on the far edge. It
+ * never turns mid-flight. Each new pass alternates between horizontal and
+ * vertical, matching a row or column of the configured grid.
  */
-private enum class FlightMode { GRID, EXIT, ENTER }
-
 class RocketWallpaperService : WallpaperService() {
     override fun onCreateEngine(): Engine = RocketEngine()
 
@@ -51,28 +55,20 @@ class RocketWallpaperService : WallpaperService() {
         private var scaleFactor = RocketSettings.DEFAULT_SCALE_PCT / 100f
         private var blockedCells: Set<Pair<Int, Int>> = emptySet()
 
-        private var curCol = 0
-        private var curRow = 0
         private var posX = 0f
         private var posY = 0f
         private var targetX = 0f
         private var targetY = 0f
         private var headingDeg = 0f
-        private var dirX = 0f
-        private var dirY = 0f
 
-        private var mode = FlightMode.GRID
-        private var legsSinceExit = 0
-        private var legsUntilExit = Random.nextInt(3, 7)
-
-        private var horizontalTurnNext = true // alternates each leg
+        private var horizontalNext = true // alternates each pass
         private var lastFrameTimeNs = 0L
 
         private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
             refreshSettings()
             if (screenW > 0 && screenH > 0) {
                 recomputeGrid()
-                resetPathIfNeeded()
+                startNewPass()
             }
         }
 
@@ -104,15 +100,7 @@ class RocketWallpaperService : WallpaperService() {
             screenH = height
             refreshSettings()
             recomputeGrid()
-            val start = findRandomFreeCell()
-            curCol = start.first
-            curRow = start.second
-            posX = cellCenterX(curCol)
-            posY = cellCenterY(curRow)
-            mode = FlightMode.GRID
-            legsSinceExit = 0
-            legsUntilExit = Random.nextInt(3, 7)
-            pickNextLeg()
+            startNewPass()
         }
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
@@ -133,18 +121,6 @@ class RocketWallpaperService : WallpaperService() {
             blockedCells = RocketSettings.getBlockedCells(ctx)
         }
 
-        /** Re-picks a starting cell/leg if settings changed enough to invalidate the current one. */
-        private fun resetPathIfNeeded() {
-            if (!isFree(curCol, curRow)) {
-                val start = findRandomFreeCell()
-                curCol = start.first
-                curRow = start.second
-                posX = cellCenterX(curCol)
-                posY = cellCenterY(curRow)
-            }
-            pickNextLeg()
-        }
-
         private fun recomputeGrid() {
             gridTop = screenH * topMarginFraction
             val gridBottom = screenH * (1f - bottomMarginFraction)
@@ -163,142 +139,78 @@ class RocketWallpaperService : WallpaperService() {
             return (col to row) !in blockedCells
         }
 
-        private fun findRandomFreeCell(): Pair<Int, Int> {
-            val freeCells = mutableListOf<Pair<Int, Int>>()
+        /** Picks a row with no blocked cells if one exists, else the row with the fewest. */
+        private fun pickRow(): Int {
+            if (rows <= 0) return 0
+            var bestRow = 0
+            var bestBlocked = Int.MAX_VALUE
+            val fullyFreeRows = mutableListOf<Int>()
+            for (r in 0 until rows) {
+                var blockedCount = 0
+                for (c in 0 until columns) if (!isFree(c, r)) blockedCount++
+                if (blockedCount == 0) fullyFreeRows.add(r)
+                if (blockedCount < bestBlocked) {
+                    bestBlocked = blockedCount
+                    bestRow = r
+                }
+            }
+            return if (fullyFreeRows.isNotEmpty()) fullyFreeRows[Random.nextInt(fullyFreeRows.size)] else bestRow
+        }
+
+        /** Picks a column with no blocked cells if one exists, else the column with the fewest. */
+        private fun pickColumn(): Int {
+            if (columns <= 0) return 0
+            var bestCol = 0
+            var bestBlocked = Int.MAX_VALUE
+            val fullyFreeCols = mutableListOf<Int>()
             for (c in 0 until columns) {
-                for (r in 0 until rows) {
-                    if (isFree(c, r)) freeCells.add(c to r)
+                var blockedCount = 0
+                for (r in 0 until rows) if (!isFree(c, r)) blockedCount++
+                if (blockedCount == 0) fullyFreeCols.add(c)
+                if (blockedCount < bestBlocked) {
+                    bestBlocked = blockedCount
+                    bestCol = c
                 }
             }
-            if (freeCells.isEmpty()) return 0 to 0
-            return freeCells[Random.nextInt(freeCells.size)]
+            return if (fullyFreeCols.isNotEmpty()) fullyFreeCols[Random.nextInt(fullyFreeCols.size)] else bestCol
         }
 
-        /** How many consecutive free cells lie in one direction from the current cell. */
-        private fun runLength(dCol: Int, dRow: Int): Int {
-            var c = curCol + dCol
-            var r = curRow + dRow
-            var len = 0
-            while (isFree(c, r)) {
-                len++
-                c += dCol
-                r += dRow
-            }
-            return len
-        }
+        /** Starts a fresh straight pass: fully off-screen on one edge to fully off-screen on the opposite edge. */
+        private fun startNewPass() {
+            val doHorizontal = horizontalNext
+            horizontalNext = !horizontalNext
 
-        /** Picks the next straight leg, alternating horizontal/vertical travel. */
-        private fun pickNextLeg() {
-            val wantHorizontal = horizontalTurnNext
-            horizontalTurnNext = !horizontalTurnNext
-
-            val candidates = if (wantHorizontal) listOf(1 to 0, -1 to 0) else listOf(0 to 1, 0 to -1)
-
-            var chosenDir: Pair<Int, Int>? = null
-            var chosenLen = 0
-            for (dir in candidates.shuffled()) {
-                val len = runLength(dir.first, dir.second)
-                if (len > 0) {
-                    chosenDir = dir
-                    chosenLen = len
-                    break
+            if (doHorizontal) {
+                val row = pickRow()
+                val y = cellCenterY(row)
+                val margin = screenW * 0.15f
+                val goingRight = Random.nextBoolean()
+                if (goingRight) {
+                    posX = -margin
+                    targetX = screenW + margin
+                } else {
+                    posX = screenW + margin
+                    targetX = -margin
                 }
-            }
-
-            if (chosenDir == null) {
-                val otherCandidates = if (wantHorizontal) listOf(0 to 1, 0 to -1) else listOf(1 to 0, -1 to 0)
-                for (dir in otherCandidates.shuffled()) {
-                    val len = runLength(dir.first, dir.second)
-                    if (len > 0) {
-                        chosenDir = dir
-                        chosenLen = len
-                        horizontalTurnNext = (dir.second != 0)
-                        break
-                    }
+                posY = y
+                targetY = y
+                headingDeg = if (goingRight) 0f else 180f
+            } else {
+                val col = pickColumn()
+                val x = cellCenterX(col)
+                val margin = screenH * 0.15f
+                val goingDown = Random.nextBoolean()
+                if (goingDown) {
+                    posY = -margin
+                    targetY = screenH + margin
+                } else {
+                    posY = screenH + margin
+                    targetY = -margin
                 }
+                posX = x
+                targetX = x
+                headingDeg = if (goingDown) 90f else -90f
             }
-
-            if (chosenDir == null) {
-                val cell = findRandomFreeCell()
-                curCol = cell.first
-                curRow = cell.second
-                posX = cellCenterX(curCol)
-                posY = cellCenterY(curRow)
-                targetX = posX
-                targetY = posY
-                return
-            }
-
-            val legLen = 1 + Random.nextInt(chosenLen)
-            curCol += chosenDir.first * legLen
-            curRow += chosenDir.second * legLen
-            targetX = cellCenterX(curCol)
-            targetY = cellCenterY(curRow)
-            val dx = targetX - posX
-            val dy = targetY - posY
-            val dist = Math.hypot(dx.toDouble(), dy.toDouble()).toFloat().coerceAtLeast(0.0001f)
-            dirX = dx / dist
-            dirY = dy / dist
-            headingDeg = Math.toDegrees(Math.atan2(dy.toDouble(), dx.toDouble())).toFloat()
-        }
-
-        /** Sends the rocket straight past the grid edge until it's fully off-screen. */
-        private fun startExit() {
-            mode = FlightMode.EXIT
-            // Travel is always axis-aligned, so only the relevant screen
-            // dimension matters -- using both wastes time on invisible travel.
-            val farDistance = if (dirX != 0f) screenW * 1.3f else screenH * 1.3f
-            targetX = posX + dirX * farDistance
-            targetY = posY + dirY * farDistance
-        }
-
-        /** Picks a random edge off-screen and flies back in to a free entry cell. */
-        private fun startEnter() {
-            mode = FlightMode.ENTER
-            val margin = maxOf(screenW, screenH) * 0.25f
-            var attempts = 0
-            var entryCol: Int
-            var entryRow: Int
-            var enterHorizontal: Boolean
-
-            do {
-                when (Random.nextInt(4)) {
-                    0 -> { // from the top
-                        entryCol = Random.nextInt(columns); entryRow = 0
-                        enterHorizontal = false
-                        posX = cellCenterX(entryCol); posY = gridTop - margin
-                    }
-                    1 -> { // from the bottom
-                        entryCol = Random.nextInt(columns); entryRow = rows - 1
-                        enterHorizontal = false
-                        posX = cellCenterX(entryCol); posY = (screenH * (1f - bottomMarginFraction)) + margin
-                    }
-                    2 -> { // from the left
-                        entryCol = 0; entryRow = Random.nextInt(rows)
-                        enterHorizontal = true
-                        posX = gridLeft - margin; posY = cellCenterY(entryRow)
-                    }
-                    else -> { // from the right
-                        entryCol = columns - 1; entryRow = Random.nextInt(rows)
-                        enterHorizontal = true
-                        posX = screenW + margin; posY = cellCenterY(entryRow)
-                    }
-                }
-                attempts++
-            } while (!isFree(entryCol, entryRow) && attempts < 20)
-
-            curCol = entryCol
-            curRow = entryRow
-            targetX = cellCenterX(curCol)
-            targetY = cellCenterY(curRow)
-            val dx = targetX - posX
-            val dy = targetY - posY
-            val dist = Math.hypot(dx.toDouble(), dy.toDouble()).toFloat().coerceAtLeast(0.0001f)
-            dirX = dx / dist
-            dirY = dy / dist
-            headingDeg = Math.toDegrees(Math.atan2(dy.toDouble(), dx.toDouble())).toFloat()
-            // The entry leg itself used one axis, so the next grid leg should use the other.
-            horizontalTurnNext = enterHorizontal
         }
 
         private fun drawFrame() {
@@ -330,26 +242,8 @@ class RocketWallpaperService : WallpaperService() {
             if (dist <= step || dist < 0.5f) {
                 posX = targetX
                 posY = targetY
-                when (mode) {
-                    FlightMode.GRID -> {
-                        legsSinceExit++
-                        if (legsSinceExit >= legsUntilExit) {
-                            startExit()
-                        } else {
-                            pickNextLeg()
-                        }
-                    }
-                    FlightMode.EXIT -> {
-                        startEnter()
-                    }
-                    FlightMode.ENTER -> {
-                        mode = FlightMode.GRID
-                        legsSinceExit = 0
-                        legsUntilExit = Random.nextInt(3, 7)
-                        pickNextLeg()
-                    }
-                }
-            } else if (dist > 0f) {
+                startNewPass()
+            } else {
                 posX += dx / dist * step
                 posY += dy / dist * step
             }
